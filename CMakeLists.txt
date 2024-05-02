@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(MyDemo)
 
 # Set the path to your include directory
@@ -13,4 +13,4 @@ link_directories(/home/sjq/miniconda3/envs/faiss_env/lib)
     # Extract the filename without extension
 add_executable(main main.cc)
     # Link against faiss library
-target_link_libraries(main faiss)
+target_link_libraries(main faiss_avx2)
