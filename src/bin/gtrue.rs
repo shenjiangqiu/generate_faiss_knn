@@ -14,19 +14,7 @@ struct Cli {
     save: PathBuf,
 }
 
-#[derive(Debug, PartialEq, PartialOrd)]
-struct DistanceWithIndex {
-    distance: f32,
-    index: usize,
-}
 
-impl Eq for DistanceWithIndex {}
-
-impl Ord for DistanceWithIndex {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.distance.partial_cmp(&other.distance).unwrap()
-    }
-}
 
 fn main() {
     init_logger_info();
