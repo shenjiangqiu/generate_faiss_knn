@@ -1,0 +1,14 @@
+[package]
+name = "generate_faiss_knn"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
+eyre = "0.6.12"
+rayon = "1.10.0"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
+# rust_lib = { path = "/home/sjq/git/nsg-fork/rust-crates/rust_lib" }
+[dev-dependencies]
+uuid = {version = "1.8.0",features = ["v4"]}
