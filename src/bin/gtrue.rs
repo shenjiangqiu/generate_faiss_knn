@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use generate_faiss_knn::{init_logger_info, read_fvecs::{Fvec, Ivec}};
+use generate_faiss_knn::{
+    init_logger_info,
+    read_fvecs::{Fvec, Ivec},
+};
 use tracing::info;
-
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -13,8 +15,6 @@ struct Cli {
     k: usize,
     save: PathBuf,
 }
-
-
 
 fn main() {
     init_logger_info();
@@ -34,6 +34,20 @@ fn main() {
         .collect();
     let ivecs = Ivec::new(cli.k, query.num, ground_truth);
     info!("save the ground truth");
+
+    // check same results
+    for query_id in 0..(10.min(ivecs.num)) {
+        let query_result = ivecs.get_node(query_id);
+        assert_eq!(query_result.len(), cli.k);
+        info!("testing topK: {:?}", query_result);
+        for i in query_result.into_iter() {
+            let base_vec = base.get_node(*i as usize);
+            let query_vec = query.get_node(query_id);
+            let distance = generate_faiss_knn::distance(query_vec, base_vec, base.dim);
+            info!("distance: {:?}", distance);
+        }
+    }
+
     ivecs.save(&cli.save);
     // save it to a file
 }
