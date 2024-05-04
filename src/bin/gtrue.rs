@@ -32,7 +32,7 @@ fn main() {
         .flatten()
         .map(|x| x.index as u32)
         .collect();
-    let ivecs = Ivec::new(query.dim, query.num, ground_truth);
+    let ivecs = Ivec::new(cli.k, query.num, ground_truth);
     info!("save the ground truth");
     ivecs.save(&cli.save);
     // save it to a file
