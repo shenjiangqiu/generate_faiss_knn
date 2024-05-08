@@ -11,11 +11,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <sys/time.h>
 
 #include <faiss/AutoTune.h>
 #include <faiss/index_factory.h>
@@ -28,10 +28,29 @@
  * and unzip it to the sudirectory sift1M.
  **/
 
+void ivecs_save(const char *fname, size_t d, size_t n, const faiss::idx_t *x) {
+  FILE *f = fopen(fname, "w");
+  if (!f) {
+    fprintf(stderr, "could not open %s for writing\n", fname);
+    perror("");
+    abort();
+  }
+  auto temp_int = std::unique_ptr<int[]>(new int[d]);
+  for (size_t i = 0; i < n; i++) {
+    fwrite(&d, 1, sizeof(int), f);
+    const faiss::idx_t *xi = x + i * d;
+    for (size_t j = 0; j < d; j++) {
+      temp_int[j] = xi[j];
+    }
+    fwrite(temp_int.get(), d, sizeof(int), f);
+  }
+  fflush(f);
+  fclose(f);
+}
+
 /*****************************************************
  * I/O functions for fvecs and ivecs
  *****************************************************/
-
 float *fvecs_read(const char *fname, size_t *d_out, size_t *n_out) {
   FILE *f = fopen(fname, "r");
   if (!f) {
@@ -88,10 +107,13 @@ int main(int argc, char **argv) {
   app.add_option("-q,--query", query, "query file path");
   std::string ground_truth;
   app.add_option("-g,--ground_truth", ground_truth, "ground truth file path");
-
   std::string output;
   app.add_option("-o,--output", output, "output file path");
+
+
   CLI11_PARSE(app, argc, argv);
+
+
   std::cout << "train: " << train << std::endl;
   std::cout << "base: " << base << std::endl;
   std::cout << "query: " << query << std::endl;
@@ -101,6 +123,7 @@ int main(int argc, char **argv) {
   double t0 = elapsed();
 
   // this is typically the fastest one.
+  // const char *index_key = "OPQ64_128,IVF262144(IVF512,PQ64x4fs,RFlat),PQ64";
   const char *index_key = "IVF512,Flat";
 
   // these ones have better memory usage
@@ -217,7 +240,17 @@ int main(int argc, char **argv) {
     delete[] I;
     delete[] D;
   }
-
+  // build knn for all base and save ivecs
+  {
+    auto labels = std::unique_ptr<faiss::idx_t[]>(new faiss::idx_t[total * k]);
+    auto distances = std::unique_ptr<float[]>(new float[total * k]);
+    printf("[%.3f s] Loading database\n", elapsed() - t0);
+    size_t nb, d2;
+    auto xb = std::unique_ptr<float>(fvecs_read(base.c_str(), &d2, &nb));
+    assert(d == d2 || !"dataset does not have same dimension as train set");
+    index->search(nb, xb.get(), k, distances.get(), labels.get());
+    ivecs_save(output.c_str(), k, total, labels.get());
+  }
   delete[] xq;
   delete[] gt;
   delete index;
