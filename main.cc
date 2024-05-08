@@ -5,12 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <CLI11.hpp>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -73,10 +73,31 @@ double elapsed() {
   gettimeofday(&tv, nullptr);
   return tv.tv_sec + tv.tv_usec * 1e-6;
 }
-const char *TRAIN = "dataset/sift_100M/sift_100M_query_100K.fvecs";
-const char *BASE = "dataset/sift_100M/sift_100M_train_1M.fvecs";
-const char *QUERY = "dataset/sift_100M/sift_100M_query_100K.fvecs";
+// const char *TRAIN = "dataset/sift_100M/sift_100M_query_100K.fvecs";
+// const char *BASE = "dataset/sift_100M/sift_100M_train_1M.fvecs";
+// const char *QUERY = "dataset/sift_100M/sift_100M_query_100K.fvecs";
 int main(int argc, char **argv) {
+
+  CLI::App app("Faiss build knn");
+  argv = app.ensure_utf8(argv);
+  std::string train;
+  app.add_option("-t,--train", train, "train file path");
+  std::string base;
+  app.add_option("-b,--base", base, "base file path");
+  std::string query;
+  app.add_option("-q,--query", query, "query file path");
+  std::string ground_truth;
+  app.add_option("-g,--ground_truth", ground_truth, "ground truth file path");
+
+  std::string output;
+  app.add_option("-o,--output", output, "output file path");
+  CLI11_PARSE(app, argc, argv);
+  std::cout << "train: " << train << std::endl;
+  std::cout << "base: " << base << std::endl;
+  std::cout << "query: " << query << std::endl;
+  std::cout << "ground_truth: " << ground_truth << std::endl;
+  std::cout << "output: " << output << std::endl;
+
   double t0 = elapsed();
 
   // this is typically the fastest one.
@@ -100,7 +121,7 @@ int main(int argc, char **argv) {
     printf("[%.3f s] Loading train set\n", elapsed() - t0);
 
     size_t nt;
-    float *xt = fvecs_read(TRAIN, &d, &nt);
+    float *xt = fvecs_read(train.c_str(), &d, &nt);
 
     printf("[%.3f s] Preparing index \"%s\" d=%ld\n", elapsed() - t0, index_key,
            d);
@@ -111,12 +132,12 @@ int main(int argc, char **argv) {
     index->train(nt, xt);
     delete[] xt;
   }
-
+  // add base
   {
     printf("[%.3f s] Loading database\n", elapsed() - t0);
 
     size_t nb, d2;
-    float *xb = fvecs_read(BASE, &d2, &nb);
+    float *xb = fvecs_read(base.c_str(), &d2, &nb);
     assert(d == d2 || !"dataset does not have same dimension as train set");
 
     printf("[%.3f s] Indexing database, size %ld*%ld\n", elapsed() - t0, nb, d);
@@ -125,6 +146,8 @@ int main(int argc, char **argv) {
 
     delete[] xb;
   }
+
+  // read query
   auto total = index->ntotal;
   printf("total: %ld\n", total);
   size_t nq;
@@ -133,20 +156,20 @@ int main(int argc, char **argv) {
     printf("[%.3f s] Loading queries\n", elapsed() - t0);
 
     size_t d2;
-    xq = fvecs_read(QUERY, &d2, &nq);
+    xq = fvecs_read(query.c_str(), &d2, &nq);
     assert(d == d2 || !"query does not have same dimension as train set");
   }
 
   size_t k;         // nb of results per query in the GT
   faiss::idx_t *gt; // nq * k matrix of ground-truth nearest-neighbors
-
+  // read ground truth
   {
     printf("[%.3f s] Loading ground truth for %ld queries\n", elapsed() - t0,
            nq);
 
     // load ground-truth and convert int to long
     size_t nq2;
-    int *gt_int = ivecs_read("sift1M/sift_groundtruth.ivecs", &k, &nq2);
+    int *gt_int = ivecs_read(ground_truth.c_str(), &k, &nq2);
     assert(nq2 == nq || !"incorrect nb of ground truth entries");
 
     gt = new faiss::idx_t[k * nq];

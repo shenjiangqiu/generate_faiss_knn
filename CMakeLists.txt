@@ -13,4 +13,5 @@ link_directories(/home/sjq/miniconda3/envs/faiss_env/lib)
     # Extract the filename without extension
 add_executable(main main.cc)
     # Link against faiss library
-target_link_libraries(main faiss_avx2)
+target_link_libraries(main faiss)
+target_include_directories(main PUBLIC .)

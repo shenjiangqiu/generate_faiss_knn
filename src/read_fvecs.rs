@@ -13,6 +13,13 @@ pub struct DataVec<T> {
     pub num: usize,
 }
 
+pub enum CommonVec {
+    Fvec,
+    Ivec,
+}
+
+
+
 impl<T> DataVec<T> {
     pub fn new(dim: usize, num: usize, data: Vec<T>) -> Self {
         assert_eq!(data.len(), dim * num);
