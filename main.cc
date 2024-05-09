@@ -51,7 +51,8 @@ void ivecs_save(const char *fname, size_t d, size_t n, const faiss::idx_t *x) {
 /*****************************************************
  * I/O functions for fvecs and ivecs
  *****************************************************/
-float *fvecs_read(const char *fname, size_t *d_out, size_t *n_out) {
+std::unique_ptr<float[]> fvecs_read(const char *fname, size_t *d_out,
+                                    size_t *n_out) {
   FILE *f = fopen(fname, "r");
   if (!f) {
     fprintf(stderr, "could not open %s\n", fname);
@@ -59,7 +60,12 @@ float *fvecs_read(const char *fname, size_t *d_out, size_t *n_out) {
     abort();
   }
   int d;
-  auto _ = fread(&d, 1, sizeof(int), f);
+  auto r = fread(&d, 1, sizeof(int), f);
+  if (r == 0) {
+    fprintf(stderr, "could not read vector dimension in %s\n", fname);
+    perror("");
+    abort();
+  }
   assert((d > 0 && d < 1000000) || !"unreasonable dimension");
   fseek(f, 0, SEEK_SET);
   struct stat st;
@@ -70,21 +76,29 @@ float *fvecs_read(const char *fname, size_t *d_out, size_t *n_out) {
 
   *d_out = d;
   *n_out = n;
-  float *x = new float[n * (d + 1)];
-  size_t nr = fread(x, sizeof(float), n * (d + 1), f);
+  auto x = std::unique_ptr<float[]>(new float[n * (d + 1)]);
+  size_t nr = fread(x.get(), sizeof(float), n * (d + 1), f);
+  if (nr != n * (d + 1)){
+    fprintf(stderr, "could not read whole file\n");
+    perror("");
+    abort();
+  }
+
   assert(nr == n * (d + 1) || !"could not read whole file");
 
   // shift array to remove row headers
   for (size_t i = 0; i < n; i++)
-    memmove(x + i * d, x + 1 + i * (d + 1), d * sizeof(*x));
+    memmove(x.get() + i * d, x.get() + 1 + i * (d + 1), d * sizeof(*x.get()));
 
   fclose(f);
   return x;
 }
 
 // not very clean, but works as long as sizeof(int) == sizeof(float)
-int *ivecs_read(const char *fname, size_t *d_out, size_t *n_out) {
-  return (int *)fvecs_read(fname, d_out, n_out);
+std::unique_ptr<int[]> ivecs_read(const char *fname, size_t *d_out,
+                                  size_t *n_out) {
+  return std::unique_ptr<int[]>(
+      reinterpret_cast<int *>(fvecs_read(fname, d_out, n_out).release()));
 }
 
 double elapsed() {
@@ -110,9 +124,7 @@ int main(int argc, char **argv) {
   std::string output;
   app.add_option("-o,--output", output, "output file path");
 
-
   CLI11_PARSE(app, argc, argv);
-
 
   std::cout << "train: " << train << std::endl;
   std::cout << "base: " << base << std::endl;
@@ -123,8 +135,8 @@ int main(int argc, char **argv) {
   double t0 = elapsed();
 
   // this is typically the fastest one.
-  // const char *index_key = "OPQ64_128,IVF262144(IVF512,PQ64x4fs,RFlat),PQ64";
-  const char *index_key = "IVF512,Flat";
+  const char *index_key = "OPQ64_128,IVF65536(IVF2566,PQ64x4fs,RFlat),PQ64";
+  // const char *index_key = "IVF512,Flat";
 
   // these ones have better memory usage
   // const char *index_key = "Flat";
@@ -144,7 +156,7 @@ int main(int argc, char **argv) {
     printf("[%.3f s] Loading train set\n", elapsed() - t0);
 
     size_t nt;
-    float *xt = fvecs_read(train.c_str(), &d, &nt);
+    auto xt = fvecs_read(train.c_str(), &d, &nt);
 
     printf("[%.3f s] Preparing index \"%s\" d=%ld\n", elapsed() - t0, index_key,
            d);
@@ -152,29 +164,26 @@ int main(int argc, char **argv) {
 
     printf("[%.3f s] Training on %ld vectors\n", elapsed() - t0, nt);
 
-    index->train(nt, xt);
-    delete[] xt;
+    index->train(nt, xt.get());
   }
   // add base
   {
     printf("[%.3f s] Loading database\n", elapsed() - t0);
 
     size_t nb, d2;
-    float *xb = fvecs_read(base.c_str(), &d2, &nb);
+    auto xb = fvecs_read(base.c_str(), &d2, &nb);
     assert(d == d2 || !"dataset does not have same dimension as train set");
 
     printf("[%.3f s] Indexing database, size %ld*%ld\n", elapsed() - t0, nb, d);
 
-    index->add(nb, xb);
-
-    delete[] xb;
+    index->add(nb, xb.get());
   }
 
   // read query
   auto total = index->ntotal;
   printf("total: %ld\n", total);
   size_t nq;
-  float *xq;
+  std::unique_ptr<float[]> xq;
   {
     printf("[%.3f s] Loading queries\n", elapsed() - t0);
 
@@ -183,8 +192,9 @@ int main(int argc, char **argv) {
     assert(d == d2 || !"query does not have same dimension as train set");
   }
 
-  size_t k;         // nb of results per query in the GT
-  faiss::idx_t *gt; // nq * k matrix of ground-truth nearest-neighbors
+  size_t k; // nb of results per query in the GT
+  std::unique_ptr<faiss::idx_t[]>
+      gt; // nq * k matrix of ground-truth nearest-neighbors
   // read ground truth
   {
     printf("[%.3f s] Loading ground truth for %ld queries\n", elapsed() - t0,
@@ -192,14 +202,53 @@ int main(int argc, char **argv) {
 
     // load ground-truth and convert int to long
     size_t nq2;
-    int *gt_int = ivecs_read(ground_truth.c_str(), &k, &nq2);
+    auto gt_int = ivecs_read(ground_truth.c_str(), &k, &nq2);
     assert(nq2 == nq || !"incorrect nb of ground truth entries");
 
-    gt = new faiss::idx_t[k * nq];
-    for (int i = 0; i < k * nq; i++) {
-      gt[i] = gt_int[i];
+    gt = std::unique_ptr<faiss::idx_t[]>(new faiss::idx_t[k * nq]);
+    for (size_t i = 0; i < k * nq; i++) {
+      gt.get()[i] = gt_int[i];
     }
-    delete[] gt_int;
+  }
+  std::string selected_params;
+  { // run auto-tuning
+
+    printf("[%.3f s] Preparing auto-tune criterion 1-recall at 1 "
+           "criterion, with k=%ld nq=%ld\n",
+           elapsed() - t0, k, nq);
+
+    faiss::OneRecallAtRCriterion crit(nq, 1);
+    crit.set_groundtruth(k, nullptr, gt.get());
+    crit.nnn = k; // by default, the criterion will request only 1 NN
+
+    printf("[%.3f s] Preparing auto-tune parameters\n", elapsed() - t0);
+
+    faiss::ParameterSpace params;
+    params.initialize(index);
+
+    printf("[%.3f s] Auto-tuning over %ld parameters (%ld combinations)\n",
+           elapsed() - t0, params.parameter_ranges.size(),
+           params.n_combinations());
+
+    faiss::OperatingPoints ops;
+    params.explore(index, nq, xq.get(), crit, &ops);
+
+    printf("[%.3f s] Found the following operating points: \n", elapsed() - t0);
+
+    ops.display();
+
+    // keep the first parameter that obtains > 0.5 1-recall@1
+    for (size_t i = 0; i < ops.optimal_pts.size(); i++) {
+      std::cout << i << " : " << ops.optimal_pts[i].key
+                << " ,t: " << ops.optimal_pts[i].t
+                << " , perf: " << ops.optimal_pts[i].perf << std::endl;
+    }
+    std::cout << "select one: ";
+    int select;
+    std::cin >> select;
+    selected_params = ops.optimal_pts[select].key;
+    assert(selected_params.size() >= 0 ||
+           !"could not find good enough op point");
   }
 
   { // Use the found configuration to perform a search
@@ -211,18 +260,18 @@ int main(int argc, char **argv) {
     printf("[%.3f s] Perform a search on %ld queries\n", elapsed() - t0, nq);
 
     // output buffers
-    faiss::idx_t *I = new faiss::idx_t[nq * k];
-    float *D = new float[nq * k];
+    auto I = std::unique_ptr<faiss::idx_t[]>(new faiss::idx_t[nq * k]);
+    auto D = std::unique_ptr<float[]>(new float[nq * k]);
 
-    index->search(nq, xq, k, D, I);
+    index->search(nq, xq.get(), k, D.get(), I.get());
 
     printf("[%.3f s] Compute recalls\n", elapsed() - t0);
 
     // evaluate result by hand.
     int n_1 = 0, n_10 = 0, n_100 = 0;
-    for (int i = 0; i < nq; i++) {
-      int gt_nn = gt[i * k];
-      for (int j = 0; j < k; j++) {
+    for (size_t i = 0; i < nq; i++) {
+      auto gt_nn = gt[i * k];
+      for (size_t j = 0; j < k; j++) {
         if (I[i * k + j] == gt_nn) {
           if (j < 1)
             n_1++;
@@ -236,9 +285,6 @@ int main(int argc, char **argv) {
     printf("R@1 = %.4f\n", n_1 / float(nq));
     printf("R@10 = %.4f\n", n_10 / float(nq));
     printf("R@100 = %.4f\n", n_100 / float(nq));
-
-    delete[] I;
-    delete[] D;
   }
   // build knn for all base and save ivecs
   {
@@ -246,13 +292,11 @@ int main(int argc, char **argv) {
     auto distances = std::unique_ptr<float[]>(new float[total * k]);
     printf("[%.3f s] Loading database\n", elapsed() - t0);
     size_t nb, d2;
-    auto xb = std::unique_ptr<float>(fvecs_read(base.c_str(), &d2, &nb));
+    auto xb = fvecs_read(base.c_str(), &d2, &nb);
     assert(d == d2 || !"dataset does not have same dimension as train set");
     index->search(nb, xb.get(), k, distances.get(), labels.get());
     ivecs_save(output.c_str(), k, total, labels.get());
   }
-  delete[] xq;
-  delete[] gt;
   delete index;
   return 0;
 }

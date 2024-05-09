@@ -10,24 +10,13 @@ add_subdirectory("external/faiss")
 # log the build type
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-# test if avx512 is supported
-include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-mavx512f" COMPILER_SUPPORTS_AVX512)
-if(COMPILER_SUPPORTS_AVX512)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f")
-    message(STATUS "AVX512 support enabled")
-else()
-    message(STATUS "AVX512 support not enabled")
-endif()
 # Add all files in demo/ directory
-
+# enable wall
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 # Add executable for each source file
     # Extract the filename without extension
 add_executable(main main.cc)
     # Link against faiss library
-if (COMPILER_SUPPORTS_AVX512)
-    target_link_libraries(main faiss_avx512)
-else()
-    target_link_libraries(main faiss_avx2)
-endif()
+target_precompile_headers(main PRIVATE CLI11.hpp)
+target_link_libraries(main faiss)
 target_include_directories(main PUBLIC .)
