@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
   double t0 = elapsed();
 
   // this is typically the fastest one.
-  const char *index_key = "OPQ64_128,IVF65536(IVF2566,PQ64x4fs,RFlat),PQ64";
+  const char *index_key = "OPQ64_128,IVF65536(IVF256,PQ64x4fs,RFlat),PQ64";
   // const char *index_key = "IVF512,Flat";
 
   // these ones have better memory usage
