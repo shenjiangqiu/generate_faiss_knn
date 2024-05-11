@@ -6,6 +6,18 @@ use tracing_subscriber::EnvFilter;
 
 pub mod read_fvecs;
 
+#[cxx::bridge]
+mod ffi {
+    extern "Rust" {
+        pub fn init_logger_info();
+        pub fn info_str(s: &str);
+    }
+
+}
+fn info_str(s:&str){
+    info!("{}",s);
+}
+
 pub fn init_logger_info() {
     tracing_subscriber::fmt::SubscriberBuilder::default()
         .with_env_filter(

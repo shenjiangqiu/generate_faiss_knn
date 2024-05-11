@@ -14,19 +14,25 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 # enable wall
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
-add_library(common common.cc common.h)
-target_include_directories(common PUBLIC .)
-target_link_libraries(common faiss)
+add_library(common common.cc common.h )
+target_include_directories(common PUBLIC . target/cxxbridge)
+target_link_directories(common PUBLIC target/release)
+target_link_libraries(common faiss_avx512 generate_faiss_knn)
 
-# Add executable for each source file
-    # Extract the filename without extension
-add_executable(main main.cc)
+# Define a list of source files
+set(executable_sources main_autotune.cc main_selected.cc gt.cc)
+
+# Iterate over each source file and create an executable
+foreach(source_file ${executable_sources})
+    # Extract the executable name from the source file
+    get_filename_component(executable_name ${source_file} NAME_WE)
+
+    # Add the executable target
+    add_executable(${executable_name} ${source_file})
+
     # Link against faiss library
-target_precompile_headers(main PRIVATE CLI11.hpp)
-target_link_libraries(main faiss common)
-target_include_directories(main PUBLIC .)
+    target_precompile_headers(${executable_name} PRIVATE CLI11.hpp)
+    target_link_libraries(${executable_name} common)
+    target_include_directories(${executable_name} PUBLIC .)
+endforeach()
 
-
-add_executable(gt gt.cc)
-target_link_libraries(gt faiss common)
-target_include_directories(gt PUBLIC .)

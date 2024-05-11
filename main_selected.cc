@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+const char *search_index = "nprobe=16,ht=240";
 /**
  * To run this demo, please download the ANN_SIFT1M dataset from
  *
@@ -66,7 +67,8 @@ int main(int argc, char **argv) {
   double t0 = elapsed();
 
   // this is typically the fastest one.
-  const char *index_key = "OPQ64_128,IVF65536(IVF256,PQ64x4fs,RFlat),PQ64";
+  // const char *index_key = "OPQ64_128,IVF65536(IVF256,PQ64x4fs,RFlat),PQ64";
+  const char *index_key = "OPQ64_128,IVF1024,PQ64";
   // const char *index_key = "IVF512,Flat";
 
   // these ones have better memory usage
@@ -141,52 +143,53 @@ int main(int argc, char **argv) {
       gt.get()[i] = gt_int[i];
     }
   }
-  std::string selected_params;
-  { // run auto-tuning
+  //   std::string selected_params;
+  //   { // run auto-tuning
 
-    printf("[%.3f s] Preparing auto-tune criterion 1-recall at 1 "
-           "criterion, with k=%ld nq=%ld\n",
-           elapsed() - t0, k, nq);
+  //     printf("[%.3f s] Preparing auto-tune criterion 1-recall at 1 "
+  //            "criterion, with k=%ld nq=%ld\n",
+  //            elapsed() - t0, k, nq);
 
-    faiss::OneRecallAtRCriterion crit(nq, 1);
-    crit.set_groundtruth(k, nullptr, gt.get());
-    crit.nnn = k; // by default, the criterion will request only 1 NN
+  //     faiss::OneRecallAtRCriterion crit(nq, 1);
+  //     crit.set_groundtruth(k, nullptr, gt.get());
+  //     crit.nnn = k; // by default, the criterion will request only 1 NN
 
-    printf("[%.3f s] Preparing auto-tune parameters\n", elapsed() - t0);
+  //     printf("[%.3f s] Preparing auto-tune parameters\n", elapsed() - t0);
 
-    faiss::ParameterSpace params;
-    params.initialize(index);
+  //     faiss::ParameterSpace params;
+  //     params.initialize(index);
 
-    printf("[%.3f s] Auto-tuning over %ld parameters (%ld combinations)\n",
-           elapsed() - t0, params.parameter_ranges.size(),
-           params.n_combinations());
+  //     printf("[%.3f s] Auto-tuning over %ld parameters (%ld combinations)\n",
+  //            elapsed() - t0, params.parameter_ranges.size(),
+  //            params.n_combinations());
 
-    faiss::OperatingPoints ops;
-    params.explore(index, nq, xq.get(), crit, &ops);
+  //     faiss::OperatingPoints ops;
+  //     params.explore(index, nq, xq.get(), crit, &ops);
 
-    printf("[%.3f s] Found the following operating points: \n", elapsed() - t0);
+  //     printf("[%.3f s] Found the following operating points: \n", elapsed() -
+  //     t0);
 
-    ops.display();
+  //     ops.display();
 
-    // keep the first parameter that obtains > 0.5 1-recall@1
-    for (size_t i = 0; i < ops.optimal_pts.size(); i++) {
-      std::cout << i << " : " << ops.optimal_pts[i].key
-                << " ,t: " << ops.optimal_pts[i].t
-                << " , perf: " << ops.optimal_pts[i].perf << std::endl;
-    }
-    std::cout << "select one: ";
-    int select;
-    std::cin >> select;
-    selected_params = ops.optimal_pts[select].key;
-    assert(selected_params.size() >= 0 ||
-           !"could not find good enough op point");
-  }
+  //     // keep the first parameter that obtains > 0.5 1-recall@1
+  //     for (size_t i = 0; i < ops.optimal_pts.size(); i++) {
+  //       std::cout << i << " : " << ops.optimal_pts[i].key
+  //                 << " ,t: " << ops.optimal_pts[i].t
+  //                 << " , perf: " << ops.optimal_pts[i].perf << std::endl;
+  //     }
+  //     std::cout << "select one: ";
+  //     int select;
+  //     std::cin >> select;
+  //     selected_params = ops.optimal_pts[select].key;
+  //     assert(selected_params.size() >= 0 ||
+  //            !"could not find good enough op point");
+  //   }
 
   { // Use the found configuration to perform a search
 
     faiss::ParameterSpace params;
 
-    params.set_index_parameters(index, "nprobe=32");
+    params.set_index_parameters(index, search_index);
 
     printf("[%.3f s] Perform a search on %ld queries\n", elapsed() - t0, nq);
 
